@@ -1,3 +1,6 @@
+""""""
+
+import ast
 import urllib.request
 import json
 import os.path
@@ -14,12 +17,13 @@ with open("creature-types.json", mode="r", encoding="utf-8") as ctypes_file:
 with open("card-types.json", mode="r", encoding="utf-8") as types_file:
     TYPES = json.load(types_file)
 
-positive_answers = ["yes", "y", "true", "t", "1", "yup"]
-negative_answers = ["no", "n", "false", "f", "0", "nope"]
+POSITIVE_ANSWERS = ["yes", "y", "true", "t", "1", "yup"]
+NEGATIVE_ANSWERS = ["no", "n", "false", "f", "0", "nope"]
 questions_left = 20
 question_history = []
 answer_history = []
 remaining_cards = []
+card_found = False
 
 
 QUESTION_ANSWERS = {
@@ -64,8 +68,6 @@ QUENTION_FUNCS = {
         card["toughness"]
     )
     < int(insert),
-    # "Does the first letter of your card's name come before {insert} in the alphabet? (punctuation and numbers are first alphabetically)": lambda card, insert: ALPHABET.index(unidecode(card["name"][0])) < ALPHABET.index(insert),
-    # "Is the price of your card less than ${insert}?": lambda card, insert: True if card["prices"]["usd"] == None else float(card["prices"]["usd"]) < insert,
     "Is your card's CMC {insert}?": lambda card, insert: card["cmc"] == insert,
     "Is your card's power {insert}?": lambda card, insert: card["power"] == insert,
     "Is your card's toughness {insert}?": lambda card, insert: card["toughness"]
@@ -88,11 +90,11 @@ def desymbolize(statstring):
     """convert non-numeric power/ toughness to numeric for comparison (X = 0 etc)"""
     if isinstance(statstring, (str)) is False:
         return statstring
-    statstring = statstring.replace("X", "0")
-    statstring = statstring.replace("*", "0")
-    statstring = statstring.replace("?", "0")  # ? is used in some Mystery Booster cards
-    return eval(statstring)  # eval is safe here because we control the input
-    # it will only ever be a number or a simple math expression like "1+0"
+    ZEROS = ["X", "*", "?"]
+    if statstring in ZEROS:
+        return 0
+    else:
+        return int(statstring[0])
 
 
 def load_scryfall_data():
@@ -211,9 +213,8 @@ def find_question(cards):
     """find the best question to ask to split the remaining cards in half"""
 
     best = []  # will contain question and insert
-    best_score = len(
-        cards
-    )  # worst possible score, ie all questions will be better than this
+    # worst possible score, ie all questions will be better than this
+    best_score = len(cards)
     target = int(len(cards) / 2)  # ideal score is half the remaining cards
 
     # go through each card and get a score of how many cards would answer yes to this question
@@ -267,7 +268,7 @@ def filter_cards(cards, question, answer):
 if __name__ == "__main__":
     remaining_cards = load_scryfall_data()
 
-    while questions_left > 1:
+    while questions_left > 1 and len(remaining_cards) > 3:
         toask = find_question(remaining_cards)
         if toask is not False:  # if a valid question was found
             print(f"\n#### Question { 21 - questions_left } ####")
@@ -275,27 +276,26 @@ if __name__ == "__main__":
             print(toask[0].format(insert=toask[1]))
             inp = input(">>> ").lower()
             while (
-                inp not in positive_answers + negative_answers
+                inp not in POSITIVE_ANSWERS + NEGATIVE_ANSWERS
             ):  # repeat until valid input
                 print(inp + " is not a valid awnser.")
                 print("Please answer yes or no")
                 inp = input(">>> ").lower()
             # Record question and awnser
             question_history.append(toask)
-            if inp in positive_answers:
+            if inp in POSITIVE_ANSWERS:
                 answer_history.append(True)
             else:
                 answer_history.append(False)
 
             remaining_cards = list(
-                filter_cards(remaining_cards, toask, inp in positive_answers)
+                filter_cards(remaining_cards, toask, inp in POSITIVE_ANSWERS)
             )
             print(f"{len(remaining_cards)} cards remaining")
         else:
             break
 
     # Final guesses
-    card_found = False
     while card_found is False and questions_left > 0:
         if len(remaining_cards) == 0:
             print("No cards match your awnsers, somethings gone wrong")
@@ -304,7 +304,7 @@ if __name__ == "__main__":
         print(f"Is your card {remaining_cards[-1]["name"]}?")
         inp = input(">>> ").lower()
         # repeat until valid input
-        while inp not in positive_answers + negative_answers:
+        while inp not in POSITIVE_ANSWERS + NEGATIVE_ANSWERS:
             print(inp + " is not a valid awnser.")
             print("Please answer yes or no")
             inp = input(">>> ").lower()
@@ -312,7 +312,7 @@ if __name__ == "__main__":
         question_history.append(
             ["Is your card called {}?", remaining_cards[-1]["name"]]
         )
-        if inp in positive_answers:
+        if inp in POSITIVE_ANSWERS:
             answer_history.append(True)
             card_found = True
         else:
@@ -325,9 +325,8 @@ if __name__ == "__main__":
         print(f"Your card was {remaining_cards[-1]["name"]}")
 
     elif len(remaining_cards) != 0:
-        print(
-            f"I couldn't guess your card in 20 questions, There were {len(remaining_cards)} cards left?"
-        )
+        print("I couldn't guess your card in 20 questions")
+        print(f"There were {len(remaining_cards)} cards left?")
         print("The remaining cards were:")
-        for card in remaining_cards:
-            print(card["name"])
+        for unguessed_card in remaining_cards:
+            print(unguessed_card["name"])
